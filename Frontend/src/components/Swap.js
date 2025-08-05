@@ -1,10 +1,11 @@
 /* global BigInt */
 import React, { useEffect, useState } from "react";
-import { Input, Popover, Radio, Modal, message } from "antd";
+import { Input, Popover, Radio, Modal, message, Spin } from "antd";
 import { ArrowDownOutlined, DownOutlined, SettingOutlined } from "@ant-design/icons";
-import { useSendTransaction, useWaitForTransaction } from "wagmi";
 import tokenList from "../tokenList.json";
 import axios from "axios";
+import { ethers } from "ethers";
+import { useAccount, useSigner } from "wagmi";
 
 function Swap({ address, isConnected }) {
   const [slippage, setSlippage] = useState(2.5);
@@ -14,37 +15,21 @@ function Swap({ address, isConnected }) {
   const [tokenTwo, setTokenTwo] = useState(tokenList[1]);
   const [isOpen, setIsOpen] = useState(false);
   const [changeToken, setChangeToken] = useState(1);
-  const [txDetails, setTxDetails] = useState({});
   const [prices, setPrices] = useState(null);
-  const [swapClickCount, setSwapClickCount] = useState(0);
   const [isPriceLoading, setIsPriceLoading] = useState(true);
-
-  const { data, sendTransaction } = useSendTransaction({
-    request: {
-      to: txDetails?.to,
-      data: txDetails?.data,
-      value: txDetails?.value,
-    },
-  });
-
-  useWaitForTransaction({
-    hash: data?.hash,
-    onSuccess() {
-      message.success("Transaction confirmed");
-    },
-    onError() {
-      message.error("Transaction failed");
-    },
-  });
+  const { data: signer } = useSigner();
+  const { address: userAddress } = useAccount();
+  const [isPopoverVisible, setIsPopoverVisible] = useState(false);
 
   const handleSlippageChange = (e) => {
-    setSlippage(e.target.value);
+  setSlippage(e.target.value);
+  setIsPopoverVisible(false);
   };
 
   const changeAmount = (e) => {
     setTokenOneAmount(e.target.value);
     if (e.target.value && prices) {
-      setTokenTwoAmount((e.target.value * prices.ratio).toFixed(2));
+      setTokenTwoAmount((e.target.value * prices.ratio).toFixed(4));
     } else {
       setTokenTwoAmount("");
     }
@@ -82,8 +67,8 @@ function Swap({ address, isConnected }) {
     setIsPriceLoading(true);
     try {
       const res = await axios.get('https://minance-1.onrender.com/tokenPrice', {
-  params: { addressOne: one, addressTwo: two }
-});
+        params: { addressOne: one, addressTwo: two }
+      });
       setPrices(res.data);
     } catch (error) {
       console.error("Failed to fetch prices:", error);
@@ -93,41 +78,48 @@ function Swap({ address, isConnected }) {
     }
   };
 
-  const fetchSwapTx = async () => {
-    setSwapClickCount((prev) => prev + 1);
-    if (!tokenOneAmount || !isConnected) return;
-
-    try {
-  const res = await axios.get("https://minance-1.onrender.com/tokenPrice", {
-    params: {
-      addressOne: tokenOne.address,
-      addressTwo: tokenTwo.address,
-      amount: tokenOneAmount,
-      slippage
+  const swapTokens = async () => {
+  try {
+    
+    if (tokenOne.address === tokenTwo.address) {
+      message.error("Cannot swap the same token.");
+      return;
     }
-  });
+    const sellToken = tokenOne.address === ethers.constants.AddressZero ? "ETH" : tokenOne.address;
+    const buyToken = tokenTwo.address === ethers.constants.AddressZero ? "ETH" : tokenTwo.address;
+    const sellAmount = ethers.utils.parseUnits(tokenOneAmount, tokenOne.decimals).toString();
 
-      setTxDetails({
-        to: res.data.to,
-        data: res.data.data,
-        value: res.data.value,
-      });
+    const quoteUrl = `https://api.0x.org/swap/v1/quote?sellToken=${sellToken}&buyToken=${buyToken}&sellAmount=${sellAmount}&takerAddress=${userAddress}&slippagePercentage=${slippage / 100}`;
 
-      sendTransaction();
-    } catch (error) {
-      console.error("Failed to fetch swap transaction:", error);
+    const res = await axios.get(quoteUrl);
+    const quote = res.data;
 
-      const messages = [
-        "Bro… this is a memecoin, why so serious? 🤣",
-        "You really thought this would work? 💀",
-        "Certified degen detected. Keep clicking, nothing’s happening. 🫡",
-        "At this point… you’re farming disappointment. Respect. 😂"
-      ];
-
-      const index = Math.min(swapClickCount, messages.length - 1);
-      message.error(messages[index]);
+    if (tokenOne.address !== ethers.constants.AddressZero) {
+      const erc20 = new ethers.Contract(
+        tokenOne.address,
+        ["function approve(address spender, uint256 amount) public returns (bool)"],
+        signer
+      );
+      const approvalTx = await erc20.approve(quote.allowanceTarget, sellAmount);
+      await approvalTx.wait();
+      console.log("Token approved:", approvalTx.hash);
     }
-  };
+
+    const tx = await signer.sendTransaction({
+      to: quote.to,
+      data: quote.data,
+      value: quote.value ? ethers.BigNumber.from(quote.value) : undefined,
+      gasLimit: quote.gas ? ethers.BigNumber.from(quote.gas) : undefined,
+    });
+
+    message.success(`Swap transaction sent: ${tx.hash}`);
+    await tx.wait();
+    message.success(`Swap confirmed: ${tx.hash}`);
+  } catch (err) {
+    console.error("Swap error:", err);
+    message.error("Swap failed. Check console.");
+  }
+};
 
   useEffect(() => {
     fetchPrices(tokenList[0].address, tokenList[1].address);
@@ -168,16 +160,23 @@ function Swap({ address, isConnected }) {
       <div className="tradeBox">
         <div className="tradeBoxHeader">
           <h4>Swap</h4>
-          <Popover content={settings} title="Settings" trigger="click" placement="bottomRight">
-            <SettingOutlined className="cog" />
-          </Popover>
+          <Popover
+           content={settings}
+           title="Settings"
+           trigger="click"
+           placement="bottomRight"
+           open={isPopoverVisible}
+           onOpenChange={(visible) => setIsPopoverVisible(visible)}
+           >
+          <SettingOutlined className="cog" />
+         </Popover>
         </div>
 
         {isPriceLoading ? (
-          <div style={{ textAlign: "center", margin: "30px 0", fontWeight: "bold" }}>
-            Fetching price… 🕐
-          </div>
-        ) : (
+             <div style={{ textAlign: "center", margin: "30px 0" }}>
+             <Spin tip="Fetching price..." size="large" />
+             </div>
+          ) : (
           <>
             <div className="inputs">
               <Input placeholder="0.0" value={tokenOneAmount} onChange={changeAmount} />
@@ -196,35 +195,33 @@ function Swap({ address, isConnected }) {
             </div>
 
             <div
-  className={`swapButton ${!isConnected || !tokenOneAmount ? "disabled" : ""}`}
-  onClick={() => {
-
-if (!isConnected) {
-  message.error(
-    <span>
-      Connect your MetaMask wallet!{" "}
-      <a href="https://metamask.io/download/" target="_blank" rel="noopener noreferrer" style={{ color: '#1890ff' }}>
-        Install MetaMask
-      </a>
-    </span>
-  );
-  return;
-}
-
-    if (!tokenOneAmount) {
-      message.error("Enter an amount");
-      return;
-    }
-    fetchSwapTx();
-  }}
-  style={{
-    pointerEvents: "auto",
-    opacity: !isConnected || !tokenOneAmount ? 0.5 : 1,
-    cursor: "pointer"
-  }}
->
-  Swap
-</div>
+              className={`swapButton ${!isConnected || !tokenOneAmount ? "disabled" : ""}`}
+              onClick={() => {
+                if (!isConnected) {
+                  message.error(
+                    <span>
+                      Connect MetaMask first.{" "}
+                      <a href="https://metamask.io/download/" target="_blank" rel="noopener noreferrer" style={{ color: "#1890ff" }}>
+                        Install MetaMask
+                      </a>
+                    </span>
+                  );
+                  return;
+                }
+                if (!tokenOneAmount) {
+                  message.error("Enter amount to swap.");
+                  return;
+                }
+                swapTokens();
+              }}
+              style={{
+                pointerEvents: "auto",
+                opacity: !isConnected || !tokenOneAmount ? 0.5 : 1,
+                cursor: "pointer",
+              }}
+            >
+              Swap
+            </div>
           </>
         )}
       </div>
