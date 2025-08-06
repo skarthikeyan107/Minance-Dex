@@ -66,7 +66,7 @@ function Swap({ address, isConnected }) {
   const fetchPrices = async (one, two) => {
     setIsPriceLoading(true);
     try {
-      const res = await axios.get('https://minance-1.onrender.com/tokenPrice', {
+      const res = await axios.get('https://minance.onrender.com/tokenPrice', {
         params: { addressOne: one, addressTwo: two }
       });
       setPrices(res.data);
