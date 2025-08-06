@@ -22,16 +22,16 @@ function Swap({ address, isConnected }) {
   const [isPopoverVisible, setIsPopoverVisible] = useState(false);
 
   const handleSlippageChange = (e) => {
-  setSlippage(e.target.value);
-  setIsPopoverVisible(false);
+    setSlippage(e.target.value);
+    setIsPopoverVisible(false);
   };
 
   const changeAmount = (e) => {
     setTokenOneAmount(e.target.value);
     if (e.target.value && prices) {
-      setTokenTwoAmount((e.target.value * prices.ratio).toFixed(4));
+    setTokenTwoAmount((e.target.value * prices.ratio).toFixed(4));
     } else {
-      setTokenTwoAmount("");
+     setTokenTwoAmount("");
     }
   };
 
@@ -80,45 +80,44 @@ function Swap({ address, isConnected }) {
 
   const swapTokens = async () => {
   try {
-    
     if (tokenOne.address === tokenTwo.address) {
       message.error("Cannot swap the same token.");
       return;
     }
-    const sellToken = tokenOne.address === ethers.constants.AddressZero ? "ETH" : tokenOne.address;
-    const buyToken = tokenTwo.address === ethers.constants.AddressZero ? "ETH" : tokenTwo.address;
-    const sellAmount = ethers.utils.parseUnits(tokenOneAmount, tokenOne.decimals).toString();
 
-    const quoteUrl = `https://api.0x.org/swap/v1/quote?sellToken=${sellToken}&buyToken=${buyToken}&sellAmount=${sellAmount}&takerAddress=${userAddress}&slippagePercentage=${slippage / 100}`;
+  const sellToken = tokenOne.address;
+  const buyToken = tokenTwo.address;
+  const sellAmount = ethers.utils.parseUnits(tokenOneAmount, tokenOne.decimals).toString();
 
-    const res = await axios.get(quoteUrl);
-    const quote = res.data;
+  const quoteUrl = `https://api.0x.org/swap/v1/quote?sellToken=${sellToken}&buyToken=${buyToken}&sellAmount=${sellAmount}&takerAddress=${userAddress}&slippagePercentage=${slippage / 100}`;
 
-    if (tokenOne.address !== ethers.constants.AddressZero) {
-      const erc20 = new ethers.Contract(
-        tokenOne.address,
-        ["function approve(address spender, uint256 amount) public returns (bool)"],
-        signer
-      );
-      const approvalTx = await erc20.approve(quote.allowanceTarget, sellAmount);
-      await approvalTx.wait();
-      console.log("Token approved:", approvalTx.hash);
-    }
+  const res = await axios.get(quoteUrl);
+  const quote = res.data;
 
-    const tx = await signer.sendTransaction({
+  const erc20 = new ethers.Contract(
+    tokenOne.address,
+    ["function approve(address spender, uint256 amount) public returns (bool)"],
+    signer
+    );
+
+  const approvalTx = await erc20.approve(quote.allowanceTarget, sellAmount);
+    await approvalTx.wait();
+    console.log("Token approved:", approvalTx.hash);
+
+  const tx = await signer.sendTransaction({
       to: quote.to,
       data: quote.data,
-      value: quote.value ? ethers.BigNumber.from(quote.value) : undefined,
       gasLimit: quote.gas ? ethers.BigNumber.from(quote.gas) : undefined,
     });
 
     message.success(`Swap transaction sent: ${tx.hash}`);
     await tx.wait();
     message.success(`Swap confirmed: ${tx.hash}`);
-  } catch (err) {
-    console.error("Swap error:", err);
-    message.error("Swap failed. Check console.");
-  }
+  } 
+  catch (err) {
+  console.error(err);
+  message.error(`Swap failed: ${err.message || "Check console"}`);
+}
 };
 
   useEffect(() => {
