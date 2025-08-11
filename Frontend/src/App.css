@@ -250,29 +250,44 @@ header {
 }
 
 @media screen and (max-width: 768px) {
-  header {
-    flex-direction: row;          
-    flex-wrap: wrap;              
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 10px;
-    gap: 8px;
+  .leftH .headerItem {
+    display: none;
   }
 
-  .leftH, .rightH {
-    flex-direction: row;          
-    flex-wrap: wrap;              
+  .rightH .headerItem {
+    display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: auto;
+    font-size: 12px;
+    white-space: nowrap;
   }
 
-  .headerItem, .connectButton {
-    padding: 4px 8px;              
-    font-size: 12px;              
+  .logo,
+  .connectButton {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
   }
 
   .logo {
-    width: 75px;                   
-    height: auto;
+    width: 79px;
+    flex-shrink: 0;
+  }
+
+  .connectButton {
+    margin-right: 12px;
+    flex-shrink: 0;
+    font-size: 12px;
+  }
+
+  .header {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    flex-wrap: nowrap;
+    padding: 8px 12px;
+    box-sizing: border-box;
+    white-space: nowrap;
+    overflow-x: hidden;
   }
 }
